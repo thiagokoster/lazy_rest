@@ -1,14 +1,7 @@
-use serde::{Deserialize, Serialize};
-use sqlx::{migrate::MigrateDatabase, Pool, Row, Sqlite, SqlitePool};
+use sqlx::{migrate::MigrateDatabase, FromRow, Pool, Row, Sqlite, SqlitePool};
+use std::env;
 
-const DB_URL: &str = "sqlite://db/lazy_rest.db";
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Storage {
-    requests: Vec<Request>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, FromRow, Debug)]
 struct Request {
     name: String,
 }
@@ -18,22 +11,34 @@ async fn main() -> anyhow::Result<()> {
     println!("Done.");
 
     println!("Adding a request");
+    let request = Request {
+        name: "Hello there".to_string(),
+    };
+    let result = add_request(&db, request).await?;
+    if !result {
+        panic!("error");
+    }
 
     get_requests(&db).await;
 
     Ok(())
 }
 
-async fn create_db() -> Result<Pool<Sqlite>, sqlx::Error> {
-    if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
-        println!("Creating database {}...", DB_URL);
-        match Sqlite::create_database(DB_URL).await {
+async fn create_db() -> anyhow::Result<Pool<Sqlite>> {
+    let database_url = env::var("DATABASE_URL")?;
+    println!("Connecting to database: {}", database_url);
+    if !Sqlite::database_exists(&database_url)
+        .await
+        .unwrap_or(false)
+    {
+        println!("Creating database {}...", database_url);
+        match Sqlite::create_database(&database_url).await {
             Ok(_) => println!("Create database success"),
             Err(error) => panic!("error while creating database: {}", error),
         }
     }
 
-    let db = SqlitePool::connect(DB_URL).await.unwrap();
+    let db = SqlitePool::connect(&database_url).await.unwrap();
     _ = sqlx::query(
         "CREATE TABLE IF NOT EXISTS request (
         id INTEGER PRIMARY KEY,
@@ -48,12 +53,27 @@ async fn create_db() -> Result<Pool<Sqlite>, sqlx::Error> {
 }
 
 async fn get_requests(db: &Pool<Sqlite>) {
-    let result = sqlx::query("SELECT name FROM request")
+    let result: Vec<Request> = sqlx::query_as("SELECT name FROM request")
         .fetch_all(db)
         .await
         .unwrap();
 
     for row in result.iter() {
-        println!("Found request {:?}", row.get::<String, &str>("name"));
+        println!("Found request {:?}", row.name);
     }
+}
+
+async fn add_request(db: &Pool<Sqlite>, request: Request) -> anyhow::Result<bool> {
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO request (name) 
+        VALUES (?)
+    "#,
+        request.name
+    )
+    .execute(db)
+    .await?
+    .rows_affected();
+
+    Ok(result > 0)
 }
