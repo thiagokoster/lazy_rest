@@ -83,7 +83,8 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Execute { id } => {
             println!("Executing request: {}", id);
-            execute_request(&pool, &client, id).await?;
+            let response = execute_request(&pool, &client, id).await?;
+            println!("{}", response);
         }
     };
     return Ok(());
@@ -143,7 +144,7 @@ async fn execute_request(
     pool: &SqlitePool,
     client: &reqwest::Client,
     id: &i64,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<String> {
     let request: Request = sqlx::query_as!(
         Request,
         r#"SELECT id, name, method, url
@@ -159,9 +160,9 @@ async fn execute_request(
         request.name, request.method, request.url
     );
 
-    match request.method {
-        Method::GET => client.get(&request.url),
+    let response = match request.method {
+        Method::GET => client.get(&request.url).send().await?.text().await?,
     };
 
-    Ok(true)
+    Ok(response)
 }
