@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::io::Write;
+
+use std::fmt::{self, Display};
+
+use serde_json::json;
+use termcolor::{Buffer, BufferWriter, Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+
 use crate::models;
 use sqlx::SqlitePool;
 
@@ -62,7 +70,7 @@ impl<'a> RequestService<'a> {
         Ok(result > 0)
     }
 
-    pub async fn execute_request(&self, id: &i64) -> anyhow::Result<String> {
+    pub async fn execute_request(&self, id: &i64) -> anyhow::Result<Response> {
         let request = sqlx::query_as!(
             models::Request,
             r#"SELECT id, name, method, url
@@ -79,9 +87,48 @@ impl<'a> RequestService<'a> {
         );
 
         let response = match request.method {
-            models::Method::GET => self.client.get(&request.url).send().await?.text().await?,
+            models::Method::GET => self.client.get(&request.url).send().await?,
+        };
+
+        let response = Response {
+            headers: response
+                .headers()
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.as_str().to_string(),
+                        value.to_str().unwrap().to_string(),
+                    )
+                })
+                .collect(),
+            body: response.text().await?,
         };
 
         Ok(response)
+    }
+}
+
+pub struct Response {
+    headers: HashMap<String, String>,
+    body: String,
+}
+
+impl Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buffer = BufferWriter::stdout(ColorChoice::Always).buffer();
+        buffer.set_color(ColorSpec::new().set_bold(true)).unwrap();
+
+        _ = writeln!(buffer, "Headers");
+        _ = buffer.reset();
+        for (key, value) in self.headers.iter() {
+            _ = writeln!(buffer, "  {}: {}", key, value);
+        }
+
+        buffer.set_color(ColorSpec::new().set_bold(true)).unwrap();
+        _ = writeln!(buffer, "Body");
+        _ = buffer.reset();
+        _ = writeln!(buffer, "  {}", self.body);
+
+        write!(f, "{}", String::from_utf8_lossy(&buffer.into_inner()))
     }
 }

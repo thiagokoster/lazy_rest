@@ -44,7 +44,6 @@ impl<'a> App<'a> {
                 }
             }
             Commands::Execute { id } => {
-                println!("Executing request: {}", id);
                 let response = self.request_service.execute_request(&id).await?;
                 println!("{}", response);
             }
@@ -56,8 +55,8 @@ impl<'a> App<'a> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().expect(".env file not found");
     let database_url = env::var("DATABASE_URL")?;
-    println!("Connecting to database: {}", database_url);
     let pool = SqlitePool::connect(&database_url).await?;
     let client = reqwest::Client::new();
     let request_service = request_service::RequestService::new(&pool, &client);

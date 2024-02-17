@@ -10,7 +10,9 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Add {
+        #[arg(short)]
         method: models::Method,
+        #[arg(short)]
         url: String,
         #[arg(short, long)]
         name: String,
