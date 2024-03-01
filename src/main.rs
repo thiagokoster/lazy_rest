@@ -3,6 +3,7 @@ use cli::Commands;
 use request_service::RequestService;
 use sqlx::SqlitePool;
 use std::env;
+use tokio::main;
 
 mod cli;
 mod models;
@@ -38,13 +39,24 @@ impl<'a> App<'a> {
             }
             Commands::Delete { id } => {
                 println!("Deleting request: {}", id);
-                let result = self.request_service.delete_request(&id).await?;
+                let result = self.request_service.delete_request(id).await?;
                 if !result {
                     panic!("Error while deleting request: {}", id);
                 }
             }
+            Commands::Edit {
+                id,
+                method,
+                url,
+                name,
+            } => {
+                println!("Edit a request");
+                self.request_service
+                    .edit_request(id, method, url, name)
+                    .await?;
+            }
             Commands::Execute { id } => {
-                let response = self.request_service.execute_request(&id).await?;
+                let response = self.request_service.execute_request(id).await?;
                 println!("{}", response);
             }
         };
@@ -53,7 +65,7 @@ impl<'a> App<'a> {
     }
 }
 
-#[tokio::main]
+#[main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().expect(".env file not found");
     let database_url = env::var("DATABASE_URL")?;

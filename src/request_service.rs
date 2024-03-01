@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use std::fmt::{self, Display};
+use std::fmt::Display;
 
-use serde_json::json;
-use termcolor::{Buffer, BufferWriter, Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+use termcolor::{BufferWriter, ColorChoice, ColorSpec, WriteColor};
 
 use crate::models;
 use sqlx::SqlitePool;
@@ -56,7 +55,7 @@ impl<'a> RequestService<'a> {
         Ok(result > 0)
     }
 
-    pub async fn delete_request(&self, id: &i64) -> anyhow::Result<bool> {
+    pub async fn delete_request(&self, id: i64) -> anyhow::Result<bool> {
         let result = sqlx::query!(
             r#"
     DELETE FROM request
@@ -70,17 +69,62 @@ impl<'a> RequestService<'a> {
         Ok(result > 0)
     }
 
-    pub async fn execute_request(&self, id: &i64) -> anyhow::Result<Response> {
+    pub async fn edit_request(
+        &self,
+        id: i64,
+        method: Option<models::Method>,
+        url: Option<String>,
+        name: Option<String>,
+    ) -> anyhow::Result<()> {
         let request = sqlx::query_as!(
             models::Request,
-            r#"SELECT id, name, method, url
-    FROM request
-    WHERE id = ?"#,
+            r#"
+            SELECT id, name, method, url
+            FROM request
+            WHERE id = ?
+            "#,
             id
         )
         .fetch_one(self.pool)
         .await?;
 
+        println!("Request {}", request.name);
+        let new_request = models::Request {
+            id: request.id,
+            name: name.unwrap_or(request.name),
+            url: url.unwrap_or(request.url),
+            method: method.unwrap_or(request.method),
+        };
+
+        sqlx::query!(
+            r#"
+        UPDATE request
+        SET name = ?,
+        url = ?,
+        method = ?
+        "#,
+            new_request.name,
+            new_request.url,
+            new_request.method
+        )
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn execute_request(&self, id: i64) -> anyhow::Result<Response> {
+        let request = sqlx::query_as!(
+            models::Request,
+            r#"SELECT id, name, method, url
+            FROM request
+            WHERE id = ?"#,
+            id
+        )
+        .fetch_one(self.pool)
+        .await?;
+
+        //TODO: Error if request does not exists
         println!(
             "Executing request {}: {:?} {}",
             request.name, request.method, request.url
